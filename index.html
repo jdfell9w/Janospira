@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Janospira v1.1 Clean Acausality</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+<style>
+html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#000; font-family:Arial,sans-serif; }
+#renderCanvas { width:100%; height:100%; display:block; touch-action:none; }
+#overlay {
+  position:absolute; top:18px; left:18px; width:360px; padding:18px;
+  color:#d8f7ff; background:rgba(0,0,0,.56); border:1px solid rgba(120,220,255,.25);
+  border-radius:18px; backdrop-filter:blur(6px); z-index:10;
+}
+#overlay h1 { margin:0 0 10px 0; color:#8feaff; }
+.info { margin-top:12px; color:#ffc27d; line-height:1.45; }
+</style>
+</head>
+<body>
+<div id="overlay">
+  <h1>Janospira v1.1</h1>
+  <div>Clean acausality visualization</div>
+  <div class="info">
+    • No amethyst crystals<br>
+    • No large future-attractor ball<br>
+    • Thin backward-time influence rays<br>
+    • Branching clockspring shell<br>
+    • GitHub / Quest ready GLB
+  </div>
+  <div class="info">Place <b>janospira_v1_1_clean_acausality.glb</b> in this folder.</div>
+</div>
+<canvas id="renderCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("renderCanvas");
+const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer:true, stencil:true, antialias:true });
+
+const createScene = async () => {
+  const scene = new BABYLON.Scene(engine);
+  scene.clearColor = new BABYLON.Color4(0.002,0.002,0.008,1);
+
+  scene.imageProcessingConfiguration.toneMappingEnabled = true;
+  scene.imageProcessingConfiguration.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_KHR_PBR_NEUTRAL;
+  scene.imageProcessingConfiguration.exposure = 1.10;
+  scene.imageProcessingConfiguration.contrast = 1.08;
+
+  const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI/2, Math.PI/2.38, 7.8, new BABYLON.Vector3(0,0.75,0.45), scene);
+  camera.attachControl(canvas, true);
+  camera.wheelDeltaPercentage = 0.01;
+  camera.lowerRadiusLimit = 2.0;
+  camera.upperRadiusLimit = 28;
+  camera.panningSensibility = 0;
+
+  const hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0,1,0), scene);
+  hemi.intensity = 0.70;
+  hemi.diffuse = new BABYLON.Color3(0.70,0.76,0.82);
+  hemi.groundColor = new BABYLON.Color3(0.04,0.025,0.022);
+
+  const cyan = new BABYLON.PointLight("cyan", new BABYLON.Vector3(5,7,5), scene);
+  cyan.diffuse = new BABYLON.Color3(0.38,0.74,1.0);
+  cyan.intensity = 34;
+
+  const gold = new BABYLON.PointLight("gold", new BABYLON.Vector3(-4,3,4), scene);
+  gold.diffuse = new BABYLON.Color3(1.0,0.48,0.08);
+  gold.intensity = 24;
+
+  const purple = new BABYLON.PointLight("purple", new BABYLON.Vector3(0,2.5,2), scene);
+  purple.diffuse = new BABYLON.Color3(0.42,0.08,0.95);
+  purple.intensity = 18;
+
+  const platform = BABYLON.MeshBuilder.CreateCylinder("platform", {diameter:5.2, height:.16, tessellation:96}, scene);
+  platform.position.y = -0.25;
+  const pm = new BABYLON.PBRMaterial("platformMat", scene);
+  pm.baseColor = new BABYLON.Color3(.014,.014,.020);
+  pm.metallic = .25;
+  pm.roughness = .70;
+  platform.material = pm;
+
+  const starMat = new BABYLON.StandardMaterial("starMat", scene);
+  starMat.emissiveColor = new BABYLON.Color3(.46,.50,.62);
+  starMat.disableLighting = true;
+  for (let i=0;i<260;i++) {
+    const s = BABYLON.MeshBuilder.CreateSphere("star", {diameter:Math.random()*0.05+0.010}, scene);
+    s.position = new BABYLON.Vector3((Math.random()-.5)*95,(Math.random()-.5)*95,(Math.random()-.5)*95);
+    s.material = starMat;
+  }
+
+  try {
+    const result = await BABYLON.SceneLoader.ImportMeshAsync("", "./", "janospira_v1_1_clean_acausality.glb?v=11", scene);
+    const root = new BABYLON.TransformNode("janospiraRoot", scene);
+    result.meshes.forEach(m => { if (m.name !== "__root__") m.parent = root; });
+    root.position.y = 0.85;
+    root.scaling = new BABYLON.Vector3(1.65,1.65,1.65);
+    scene.registerBeforeRender(() => root.rotation.y += 0.0008);
+  } catch(e) {
+    console.error(e);
+    alert("Failed to load janospira_v1_1_clean_acausality.glb. Check exact filename.");
+  }
+
+  try { await scene.createDefaultXRExperienceAsync({ floorMeshes:[platform] }); } catch(e) { console.log(e); }
+
+  return scene;
+};
+
+createScene().then(scene => engine.runRenderLoop(() => scene.render()));
+window.addEventListener("resize", () => engine.resize());
+</script>
+</body>
+</html>
