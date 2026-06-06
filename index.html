@@ -2,104 +2,259 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Janospira v1.1 Clean Acausality</title>
+<title>Janospira v3 Future Attractor</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <script src="https://cdn.babylonjs.com/babylon.js"></script>
 <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+
 <style>
-html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#000; font-family:Arial,sans-serif; }
-#renderCanvas { width:100%; height:100%; display:block; touch-action:none; }
-#overlay {
-  position:absolute; top:18px; left:18px; width:360px; padding:18px;
-  color:#d8f7ff; background:rgba(0,0,0,.56); border:1px solid rgba(120,220,255,.25);
-  border-radius:18px; backdrop-filter:blur(6px); z-index:10;
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: Arial, sans-serif;
 }
-#overlay h1 { margin:0 0 10px 0; color:#8feaff; }
-.info { margin-top:12px; color:#ffc27d; line-height:1.45; }
+#renderCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+#overlay {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  max-width: 390px;
+  padding: 14px 16px;
+  color: #d8f7ff;
+  background: rgba(0,0,0,0.54);
+  border: 1px solid rgba(120,220,255,0.25);
+  border-radius: 16px;
+  z-index: 10;
+}
+#overlay h1 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  color: #8feaff;
+}
+#overlay .info {
+  color: #ffc27d;
+  font-size: 14px;
+  line-height: 1.45;
+}
 </style>
 </head>
+
 <body>
 <div id="overlay">
-  <h1>Janospira v1.1</h1>
-  <div>Clean acausality visualization</div>
+  <h1>Janospira v3</h1>
   <div class="info">
-    • No amethyst crystals<br>
-    • No large future-attractor ball<br>
-    • Thin backward-time influence rays<br>
-    • Branching clockspring shell<br>
-    • GitHub / Quest ready GLB
+    Front view preserved.<br>
+    Panels load from <b>panels/</b> and face the viewer.
   </div>
-  <div class="info">Place <b>janospira_v1_1_clean_acausality.glb</b> in this folder.</div>
 </div>
+
 <canvas id="renderCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById("renderCanvas");
-const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer:true, stencil:true, antialias:true });
+const engine = new BABYLON.Engine(canvas, true, {
+  preserveDrawingBuffer: true,
+  stencil: true,
+  antialias: true
+});
+
+const GLB_FILE = "janospira_v3_future_attractor_no_crystals.glb?v=6";
+const PANEL_FOLDER = "panels/";
+const PANEL_VERSION = "?v=6";
+
+// Tries panel_0.png first, then panel-0.png, then panel0.png.
+function panelCandidates(i) {
+  return [
+    PANEL_FOLDER + "panel_" + i + ".png",
+    PANEL_FOLDER + "panel-" + i + ".png",
+    PANEL_FOLDER + "panel" + i + ".png"
+  ];
+}
+
+function makePanelMaterial(scene, name, index) {
+  const mat = new BABYLON.StandardMaterial(name + "_mat", scene);
+  mat.backFaceCulling = false;
+  mat.disableLighting = true;
+  mat.diffuseColor = new BABYLON.Color3(1, 1, 1);
+  mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+
+  const urls = panelCandidates(index);
+  let n = 0;
+
+  function tryLoad() {
+    const url = urls[n] + PANEL_VERSION;
+
+    const tex = new BABYLON.Texture(
+      url,
+      scene,
+      false,
+      false,
+      BABYLON.Texture.TRILINEAR_SAMPLINGMODE,
+      () => {
+        console.log("Loaded panel", index, url);
+
+        // Fix upside-down panel images.
+        mat.diffuseTexture = tex;
+        mat.emissiveTexture = tex;
+      },
+      () => {
+        console.warn("Failed panel", index, url);
+        n++;
+        if (n < urls.length) {
+          tryLoad();
+        }
+      }
+    );
+
+    tex.hasAlpha = false;
+  }
+
+  tryLoad();
+  return mat;
+}
+
+function makePanel(scene, name, index, x, y, z, width, height) {
+  // Plane is placed behind the exhibit at z=positive.
+  // Rotated around Y so the image face looks toward the viewer at z=negative.
+  const panel = BABYLON.MeshBuilder.CreatePlane(name, {
+    width: width,
+    height: height,
+    sideOrientation: BABYLON.Mesh.DOUBLESIDE
+  }, scene);
+
+  panel.position = new BABYLON.Vector3(x, y, z);
+  panel.rotation.y = Math.PI;
+  panel.rotation.z = Math.PI; // rotate each panel image 180 degrees
+  panel.material = makePanelMaterial(scene, name, index);
+
+  // Dark backing behind the image plane.
+  const backing = BABYLON.MeshBuilder.CreateBox(name + "_backing", {
+    width: width + 0.08,
+    height: height + 0.08,
+    depth: 0.035
+  }, scene);
+
+  backing.position = new BABYLON.Vector3(x, y, z + 0.035);
+  backing.rotation.y = Math.PI;
+
+  const backMat = new BABYLON.StandardMaterial(name + "_back_mat", scene);
+  backMat.diffuseColor = new BABYLON.Color3(0.01, 0.014, 0.02);
+  backMat.emissiveColor = new BABYLON.Color3(0.004, 0.005, 0.008);
+  backing.material = backMat;
+
+  return panel;
+}
+
+function addPanelWall(scene) {
+  const aspect = 1792 / 1024;
+
+  // Behind sculpture relative to starting camera.
+  const z = 5.2;
+
+  const heroH = 2.65;
+  const heroW = heroH * aspect;
+
+  const sideH = 1.30;
+  const sideW = sideH * aspect;
+
+  const leftX = -4.85;
+  const rightX = 4.85;
+
+  makePanel(scene, "web_panel_0_hero", 0, 0, 2.55, z, heroW, heroH);
+
+  makePanel(scene, "web_panel_1_left_top", 1, leftX, 4.05, z, sideW, sideH);
+  makePanel(scene, "web_panel_2_left_mid", 2, leftX, 2.55, z, sideW, sideH);
+  makePanel(scene, "web_panel_3_left_low", 3, leftX, 1.05, z, sideW, sideH);
+
+  makePanel(scene, "web_panel_4_right_top", 4, rightX, 4.05, z, sideW, sideH);
+  makePanel(scene, "web_panel_5_right_mid", 5, rightX, 2.55, z, sideW, sideH);
+  makePanel(scene, "web_panel_6_right_low", 6, rightX, 1.05, z, sideW, sideH);
+}
 
 const createScene = async () => {
   const scene = new BABYLON.Scene(engine);
-  scene.clearColor = new BABYLON.Color4(0.002,0.002,0.008,1);
+  scene.clearColor = new BABYLON.Color4(0.002, 0.002, 0.008, 1);
 
   scene.imageProcessingConfiguration.toneMappingEnabled = true;
-  scene.imageProcessingConfiguration.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_KHR_PBR_NEUTRAL;
-  scene.imageProcessingConfiguration.exposure = 1.10;
+  scene.imageProcessingConfiguration.toneMappingType =
+    BABYLON.ImageProcessingConfiguration.TONEMAPPING_KHR_PBR_NEUTRAL;
+  scene.imageProcessingConfiguration.exposure = 1.18;
   scene.imageProcessingConfiguration.contrast = 1.08;
 
-  const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI/2, Math.PI/2.38, 7.8, new BABYLON.Vector3(0,0.75,0.45), scene);
+  // Start from front of exhibit. Panels are behind sculpture at z=+5.2.
+  const camera = new BABYLON.UniversalCamera(
+    "camera",
+    new BABYLON.Vector3(0, 1.7, -8.0),
+    scene
+  );
+  camera.setTarget(new BABYLON.Vector3(0, 1.4, 0.4));
   camera.attachControl(canvas, true);
-  camera.wheelDeltaPercentage = 0.01;
-  camera.lowerRadiusLimit = 2.0;
-  camera.upperRadiusLimit = 28;
-  camera.panningSensibility = 0;
+  camera.speed = 0.20;
+  camera.angularSensibility = 3500;
+  camera.minZ = 0.05;
 
-  const hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0,1,0), scene);
-  hemi.intensity = 0.70;
-  hemi.diffuse = new BABYLON.Color3(0.70,0.76,0.82);
-  hemi.groundColor = new BABYLON.Color3(0.04,0.025,0.022);
+  const hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0, 1, 0), scene);
+  hemi.intensity = 0.88;
 
-  const cyan = new BABYLON.PointLight("cyan", new BABYLON.Vector3(5,7,5), scene);
-  cyan.diffuse = new BABYLON.Color3(0.38,0.74,1.0);
-  cyan.intensity = 34;
+  const cyan = new BABYLON.PointLight("cyan", new BABYLON.Vector3(5, 7, -4), scene);
+  cyan.diffuse = new BABYLON.Color3(0.35, 0.80, 1.0);
+  cyan.intensity = 38;
 
-  const gold = new BABYLON.PointLight("gold", new BABYLON.Vector3(-4,3,4), scene);
-  gold.diffuse = new BABYLON.Color3(1.0,0.48,0.08);
-  gold.intensity = 24;
+  const warm = new BABYLON.PointLight("warm", new BABYLON.Vector3(-5, 4, 4), scene);
+  warm.diffuse = new BABYLON.Color3(1.0, 0.42, 0.10);
+  warm.intensity = 32;
 
-  const purple = new BABYLON.PointLight("purple", new BABYLON.Vector3(0,2.5,2), scene);
-  purple.diffuse = new BABYLON.Color3(0.42,0.08,0.95);
-  purple.intensity = 18;
-
-  const platform = BABYLON.MeshBuilder.CreateCylinder("platform", {diameter:5.2, height:.16, tessellation:96}, scene);
-  platform.position.y = -0.25;
-  const pm = new BABYLON.PBRMaterial("platformMat", scene);
-  pm.baseColor = new BABYLON.Color3(.014,.014,.020);
-  pm.metallic = .25;
-  pm.roughness = .70;
-  platform.material = pm;
-
-  const starMat = new BABYLON.StandardMaterial("starMat", scene);
-  starMat.emissiveColor = new BABYLON.Color3(.46,.50,.62);
-  starMat.disableLighting = true;
-  for (let i=0;i<260;i++) {
-    const s = BABYLON.MeshBuilder.CreateSphere("star", {diameter:Math.random()*0.05+0.010}, scene);
-    s.position = new BABYLON.Vector3((Math.random()-.5)*95,(Math.random()-.5)*95,(Math.random()-.5)*95);
-    s.material = starMat;
-  }
+  const violet = new BABYLON.PointLight("violet", new BABYLON.Vector3(0, 3, 3), scene);
+  violet.diffuse = new BABYLON.Color3(0.55, 0.12, 1.0);
+  violet.intensity = 25;
 
   try {
-    const result = await BABYLON.SceneLoader.ImportMeshAsync("", "./", "janospira_v1_1_clean_acausality.glb?v=11", scene);
+    const result = await BABYLON.SceneLoader.ImportMeshAsync("", "./", GLB_FILE, scene);
+
     const root = new BABYLON.TransformNode("janospiraRoot", scene);
-    result.meshes.forEach(m => { if (m.name !== "__root__") m.parent = root; });
-    root.position.y = 0.85;
-    root.scaling = new BABYLON.Vector3(1.65,1.65,1.65);
-    scene.registerBeforeRender(() => root.rotation.y += 0.0008);
-  } catch(e) {
+
+    result.meshes.forEach(m => {
+      if (m.name !== "__root__") {
+        m.parent = root;
+      }
+
+      // Hide Blender-made blank/mirrored panel planes and backings.
+      const n = (m.name || "").toLowerCase();
+      if (
+        n.includes("panel_") ||
+        n.includes("panel-") ||
+        n.includes("hero_clockspring") ||
+        n.includes("thin_backing")
+      ) {
+        m.setEnabled(false);
+      }
+    });
+
+    root.position.y = 0;
+    root.scaling = new BABYLON.Vector3(1, 1, 1);
+
+  } catch (e) {
     console.error(e);
-    alert("Failed to load janospira_v1_1_clean_acausality.glb. Check exact filename.");
+    alert("Failed to load " + GLB_FILE + ". Put index.html in the same folder as the GLB.");
   }
 
-  try { await scene.createDefaultXRExperienceAsync({ floorMeshes:[platform] }); } catch(e) { console.log(e); }
+  // Web-loaded corrected panels.
+  addPanelWall(scene);
+
+  try {
+    await scene.createDefaultXRExperienceAsync({ floorMeshes: [] });
+  } catch (e) {
+    console.log("XR unavailable:", e);
+  }
 
   return scene;
 };
