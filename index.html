@@ -67,6 +67,7 @@ const engine = new BABYLON.Engine(canvas, true, {
   stencil: true,
   antialias: true
 });
+engine.setHardwareScalingLevel(1.0);
 
 const GLB_FILE = "janospira_v3_future_attractor_floating_title.glb?v=13";
 const PANEL_FOLDER = "panels/";
