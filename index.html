@@ -53,7 +53,8 @@ html, body {
   <h1>Janospira v3</h1>
   <div class="info">
     Front view preserved.<br>
-    Panels load from <b>panels/</b> and face the viewer.
+    Panels load from <b>panels/</b> and face the viewer.<br>
+    Floating title corrected forward only.
   </div>
 </div>
 
@@ -67,9 +68,9 @@ const engine = new BABYLON.Engine(canvas, true, {
   antialias: true
 });
 
-const GLB_FILE = "janospira_v3_future_attractor_no_crystals.glb?v=6";
+const GLB_FILE = "janospira_v3_future_attractor_floating_title.glb?v=13";
 const PANEL_FOLDER = "panels/";
-const PANEL_VERSION = "?v=6";
+const PANEL_VERSION = "?v=13";
 
 // Tries panel_0.png first, then panel-0.png, then panel0.png.
 function panelCandidates(i) {
@@ -135,6 +136,7 @@ function makePanel(scene, name, index, x, y, z, width, height) {
   panel.rotation.y = Math.PI;
   panel.rotation.z = Math.PI; // rotate each panel image 180 degrees
   panel.material = makePanelMaterial(scene, name, index);
+  panel.parent = panelRoot;
 
   // Dark backing behind the image plane.
   const backing = BABYLON.MeshBuilder.CreateBox(name + "_backing", {
@@ -150,11 +152,14 @@ function makePanel(scene, name, index, x, y, z, width, height) {
   backMat.diffuseColor = new BABYLON.Color3(0.01, 0.014, 0.02);
   backMat.emissiveColor = new BABYLON.Color3(0.004, 0.005, 0.008);
   backing.material = backMat;
+  backing.parent = panelRoot;
 
   return panel;
 }
 
 function addPanelWall(scene) {
+  panelRoot = new BABYLON.TransformNode("webPanelRoot", scene);
+
   const aspect = 1792 / 1024;
 
   // Behind sculpture relative to starting camera.
@@ -179,6 +184,126 @@ function addPanelWall(scene) {
   makePanel(scene, "web_panel_5_right_mid", 5, rightX, 2.55, z, sideW, sideH);
   makePanel(scene, "web_panel_6_right_low", 6, rightX, 1.05, z, sideW, sideH);
 }
+
+
+let panelRoot = null;
+let panelsVisible = true;
+let overlayVisible = true;
+
+function setPanelsVisible(v) {
+  panelsVisible = v;
+  if (panelRoot) panelRoot.setEnabled(v);
+}
+
+function setOverlayVisible(v) {
+  overlayVisible = v;
+  const ov = document.getElementById("overlay");
+  if (ov) ov.style.display = v ? "block" : "none";
+}
+
+function enableQuestControllerNavigation(scene, xr) {
+  const axes = {};
+  const deadZone = 0.18;
+  const moveSpeed = 2.0;
+  const turnSpeed = 1.8;
+  const lastPress = {};
+
+  function debounced(key) {
+    const now = performance.now();
+    if (!lastPress[key] || now - lastPress[key] > 450) {
+      lastPress[key] = now;
+      return true;
+    }
+    return false;
+  }
+
+  xr.input.onControllerAddedObservable.add((controller) => {
+    controller.onMotionControllerInitObservable.add((motionController) => {
+      const handedness = controller.inputSource.handedness || "unknown";
+      const ids = motionController.getComponentIds();
+
+      ids.forEach((id) => {
+        const comp = motionController.getComponent(id);
+        if (!comp) return;
+
+        if (id.includes("thumbstick") || id.includes("touchpad")) {
+          comp.onAxisValueChangedObservable.add((values) => {
+            axes[handedness] = { x: values.x || 0, y: values.y || 0 };
+          });
+        }
+
+        if (id.includes("trigger")) {
+          comp.onButtonStateChangedObservable.add(() => {
+            if (comp.changes && comp.changes.pressed && comp.pressed) {
+              if (handedness === "left" && debounced("left_trigger")) {
+                setPanelsVisible(!panelsVisible);
+              }
+              if (handedness === "right" && debounced("right_trigger")) {
+                setOverlayVisible(!overlayVisible);
+              }
+            }
+          });
+        }
+      });
+    });
+  });
+
+  scene.onBeforeRenderObservable.add(() => {
+    if (!xr.baseExperience || !xr.baseExperience.camera) return;
+
+    const cam = xr.baseExperience.camera;
+    const dt = engine.getDeltaTime() / 1000;
+
+    const left = axes.left || {x:0, y:0};
+    const right = axes.right || {x:0, y:0};
+
+    const moveX = Math.abs(left.x) > deadZone ? left.x : 0;
+    const moveY = Math.abs(left.y) > deadZone ? left.y : 0;
+
+    if (moveX !== 0 || moveY !== 0) {
+      const forward = cam.getDirection(BABYLON.Axis.Z);
+      forward.y = 0;
+      forward.normalize();
+
+      const strafe = cam.getDirection(BABYLON.Axis.X);
+      strafe.y = 0;
+      strafe.normalize();
+
+      const delta = forward.scale(-moveY * moveSpeed * dt).add(strafe.scale(moveX * moveSpeed * dt));
+      cam.position.addInPlace(delta);
+    }
+
+    const turn = Math.abs(right.x) > deadZone ? right.x : 0;
+    if (turn !== 0) {
+      cam.rotation.y += turn * turnSpeed * dt;
+    }
+  });
+}
+
+
+
+function fixTitleOnlyPosition(scene) {
+  // Fix only the floating Janospira title/nameplate objects.
+  // Camera starts at z=-8, so negative Z moves the title toward the viewer/front.
+  const TITLE_FORWARD_Z = -6;
+  const TITLE_UP_Y = 0.02;
+
+  scene.meshes.forEach(m => {
+    const n = (m.name || "").toLowerCase();
+
+    const isFloatingTitle =
+      n.includes("janospira_floating") ||
+      n.includes("janospira_title") ||
+      n.includes("floating_title") ||
+      n.includes("gold_endcap");
+
+    if (isFloatingTitle) {
+      m.position.z += TITLE_FORWARD_Z;
+      m.position.y += TITLE_UP_Y;
+    }
+  });
+}
+
 
 const createScene = async () => {
   const scene = new BABYLON.Scene(engine);
@@ -242,6 +367,8 @@ const createScene = async () => {
     root.position.y = 0;
     root.scaling = new BABYLON.Vector3(1, 1, 1);
 
+    fixTitleOnlyPosition(scene);
+
   } catch (e) {
     console.error(e);
     alert("Failed to load " + GLB_FILE + ". Put index.html in the same folder as the GLB.");
@@ -251,7 +378,8 @@ const createScene = async () => {
   addPanelWall(scene);
 
   try {
-    await scene.createDefaultXRExperienceAsync({ floorMeshes: [] });
+    const xr = await scene.createDefaultXRExperienceAsync({ floorMeshes: [] });
+    enableQuestControllerNavigation(scene, xr);
   } catch (e) {
     console.log("XR unavailable:", e);
   }
